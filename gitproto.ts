@@ -236,8 +236,10 @@ function planFetch(repo: RepoRec, request: FetchRequest): FetchPlan {
   let includedCommits: Set<string>;
   if (effectiveDepth !== null) {
     includedCommits = new Set<string>();
-    // Distances are measured from the wants peeled to commits (a want may be a tag).
-    for (const [oid, distance] of commitDistances(store, peeledWants)) {
+    // Distances are measured from the wants peeled to commits (a want may be a tag),
+    // and the BFS stops at the depth window: a depth-1 clone of a long history must
+    // not walk all of it.
+    for (const [oid, distance] of commitDistances(store, peeledWants, effectiveDepth)) {
       if (distance <= effectiveDepth) includedCommits.add(oid);
     }
   } else {
@@ -265,19 +267,26 @@ function planFetch(repo: RepoRec, request: FetchRequest): FetchPlan {
       for (const oid of objectClosure(store, [peeled])) objectSet.add(oid);
     }
   }
-  // Annotated tags whose target chain reaches the included set ride along.
-  const wantClosure = objectClosure(store, request.wants);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const oid of wantClosure) {
-      if (objectSet.has(oid)) continue;
-      const object = store.get(oid);
-      if (object === undefined || object.type !== 'tag') continue;
-      const target = tagTarget(store, oid);
-      if (target !== null && (objectSet.has(target) || includedCommits.has(target))) {
-        objectSet.add(oid);
-        grew = true;
+  // Annotated tags whose target chain reaches the included set ride along. The scan
+  // costs a full closure of the wants, so it runs only when a tag is actually in
+  // play (a want naming a tag, or any ref pointing at one).
+  const anyTags =
+    request.wants.some((want) => store.get(want)?.type === 'tag') ||
+    [...repo.refs.values()].some((oid) => store.get(oid)?.type === 'tag');
+  if (anyTags) {
+    const wantClosure = objectClosure(store, request.wants);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const oid of wantClosure) {
+        if (objectSet.has(oid)) continue;
+        const object = store.get(oid);
+        if (object === undefined || object.type !== 'tag') continue;
+        const target = tagTarget(store, oid);
+        if (target !== null && (objectSet.has(target) || includedCommits.has(target))) {
+          objectSet.add(oid);
+          grew = true;
+        }
       }
     }
   }

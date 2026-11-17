@@ -206,12 +206,12 @@ export function commitAncestors(store: ObjectMap, tips: readonly string[]): Set<
 }
 
 /** BFS distance (1 = a tip itself) from the tips to every reachable commit. */
-export function commitDistances(store: ObjectMap, tips: readonly string[]): Map<string, number> {
+export function commitDistances(store: ObjectMap, tips: readonly string[], maxDepth = Number.POSITIVE_INFINITY): Map<string, number> {
   const distance = new Map<string, number>();
   let frontier = [...new Set(tips)];
   for (const tip of frontier) distance.set(tip, 1);
   let depth = 1;
-  while (frontier.length > 0) {
+  while (frontier.length > 0 && depth < maxDepth) {
     const next: string[] = [];
     for (const oid of frontier) {
       const object = store.get(oid);
