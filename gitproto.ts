@@ -245,7 +245,26 @@ function planFetch(repo: RepoRec, request: FetchRequest): FetchPlan {
   }
   for (const oid of haveCommits) includedCommits.delete(oid);
 
-  const objectSet = objectClosure(store, [...includedCommits]);
+  // The delivered set: the included commits and their tree closures ONLY — a plain
+  // closure of the commits would follow parents past the depth window and hand a
+  // shallow client history it must not see.
+  const objectSet = new Set<string>();
+  for (const oid of includedCommits) {
+    objectSet.add(oid);
+    const object = store.get(oid);
+    if (object !== undefined && object.type === 'commit') {
+      for (const treeOid of objectClosure(store, [parseCommit(object.data).tree])) objectSet.add(treeOid);
+    }
+  }
+  // A want that names a non-commit object directly (a tree or blob tag target) seeds
+  // its own closure.
+  for (const want of request.wants) {
+    const peeled = peelToNonTag(store, want);
+    const object = store.get(peeled);
+    if (object !== undefined && object.type !== 'commit') {
+      for (const oid of objectClosure(store, [peeled])) objectSet.add(oid);
+    }
+  }
   // Annotated tags whose target chain reaches the included set ride along.
   const wantClosure = objectClosure(store, request.wants);
   let grew = true;

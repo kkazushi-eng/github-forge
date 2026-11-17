@@ -294,7 +294,9 @@ function contentsWrite(repo: RepoRec, path: string, body: Record<string, unknown
     flat.delete(path);
   }
   const treeOid = buildTreeFromFlat(repo.objects, flat);
-  const commitSha = makeCommit(repo, treeOid, tip === null ? [] : [tip], message.endsWith('\n') ? message : `${message}\n`);
+  // The message is stored verbatim: the commits API reads it back byte for byte, and
+  // the suite compares it exactly against the message the contents call carried.
+  const commitSha = makeCommit(repo, treeOid, tip === null ? [] : [tip], message);
   repo.refs.set(`refs/heads/${branch}`, commitSha);
   return { status: mode === 'put' ? (existing === undefined ? 201 : 200) : 200, commitSha, blobOid };
 }
